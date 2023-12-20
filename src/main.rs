@@ -7,7 +7,9 @@ mod state;
 // use websocket::on_default_connect;
 use socketioxide::{SocketIo};
 use std::env;
+use std::sync::Arc;
 use axum::http::HeaderValue;
+use socketioxide::extract::SocketRef;
 use tower_http::cors::CorsLayer;
 use tracing::info;
 use tracing_subscriber::FmtSubscriber;
@@ -20,12 +22,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::subscriber::set_global_default(FmtSubscriber::default())?;
 
-    let socket_store = state::MessageStore::default();
+    let socket_store = state::State::default();
     let (socket_io_layer, io) = SocketIo::builder()
         .with_state(socket_store)
         .build_layer();
 
-    io.ns("/", on_connect_default);
+    let io = Arc::new(io);
+    let io_clone = Arc::clone(&io);
+    io.ns("/", move |socket: SocketRef| {
+        return on_connect_default(socket, io_clone);
+    });
 
     let app = axum::Router::new()
         .configure_webserver()
