@@ -27,8 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_state(socket_store)
         .build_layer();
 
-    let io = Arc::new(io);
-    let io_clone = Arc::clone(&io);
+    let io_clone = Arc::new(io.clone());
     io.ns("/", move |socket: SocketRef| {
         return on_connect_default(socket, io_clone);
     });
