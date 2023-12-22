@@ -1,20 +1,23 @@
-mod webserver;
-mod websocket;
+mod relay;
 mod dotenv;
 mod packets;
 mod state;
+mod data;
 
 // use websocket::on_default_connect;
 use socketioxide::{SocketIo};
 use std::env;
+use std::ops::Deref;
 use std::sync::Arc;
 use axum::http::HeaderValue;
-use socketioxide::extract::SocketRef;
+use serde_json::Value;
+use socketioxide::extract::{Bin, Data, SocketRef};
+use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
+use tower_http::services::ServeDir;
 use tracing::info;
 use tracing_subscriber::FmtSubscriber;
-use webserver::RouterExt;
-use crate::websocket::on_connect_default;
+use crate::relay::on_connect_default;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,13 +35,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let app = axum::Router::new()
-        .configure_webserver()
-        .layer(CorsLayer::new()
-            .allow_origin(env::var("CLIENT_ORIGIN").expect("CLIENT_ORIGIN must be set")
-                .parse::<HeaderValue>()
-                .unwrap()
-            ))
-        .layer(socket_io_layer);
+        .nest_service("/", ServeDir::new("dashboard"))
+        .layer(ServiceBuilder::new()
+            .layer(CorsLayer::new()
+                .allow_origin(env::var("CLIENT_ORIGIN").expect("CLIENT_ORIGIN must be set")
+                    .parse::<HeaderValue>()
+                    .unwrap()))
+            .layer(socket_io_layer));
 
     let server_port = env::var("SERVER_PORT").expect("SERVER_PORT must be set");
 

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use crate::data::ClientId;
 
 #[derive(Debug, Deserialize)]
 pub struct ClientPreflightRequest {
@@ -11,5 +12,5 @@ pub struct ClientPreflightResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ClientData {
-    pub id: String,
+    pub id: ClientId,
 }

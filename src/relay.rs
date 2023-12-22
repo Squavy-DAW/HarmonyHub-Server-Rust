@@ -1,9 +1,11 @@
 use std::collections::HashSet;
 use std::sync::Arc;
-use serde_json::{to_string, Value};
+use futures::StreamExt;
 use socketioxide::extract::{State, Data, SocketRef, AckSender, Bin};
 use socketioxide::SocketIo;
 use tracing::{info};
+use uuid::Uuid;
+use crate::data::ClientId;
 use crate::packets::*;
 use crate::state::NamespaceStore;
 
@@ -44,8 +46,7 @@ pub async fn on_connect_default(socket: SocketRef, io: Arc<SocketIo>) {
                 on_connect_dynamic(socket, io_clone)
             });
 
-            let res = to_string(&ClientPreflightResponse { ns: generated, }).unwrap();
-            ack.send(res).ok();
+            ack.send(&ClientPreflightResponse { ns: generated, }).ok();
         }
     );
 }
@@ -53,17 +54,27 @@ pub async fn on_connect_default(socket: SocketRef, io: Arc<SocketIo>) {
 pub async fn on_connect_dynamic(socket: SocketRef, _io: Arc<SocketIo>) {
     info!("Client connected: {:?} on ns: {:?}", socket.id, socket.ns());
 
+    socket.extensions.insert(ClientId(Uuid::new_v4().to_string()));
+
     socket.on(
         "sqw:broadcast",
-        |socket: SocketRef, Data::<Value>(data), ack: AckSender, Bin(bin)| async move {
+        |socket: SocketRef, ack: AckSender, Bin(bin)| async move {
             info!("Client broadcast: {:?}", bin);
+            let client_id = socket.extensions.get::<ClientId>().unwrap().clone();
 
             socket.broadcast()
                 .bin(bin)
-                .emit_with_ack::<ClientData>("sqw:data", ClientData { id: "server".to_string(), })
-                .ok();
+                .emit_with_ack::<ClientData>("sqw:data", ClientData { id: client_id, })
+                .unwrap()
+                .for_each(|_| async {
+                    info!("Client broadcasted");
+                });
         }
     );
+
+    socket.on_disconnect(|socket: SocketRef| {
+        info!("Client disconnected: {:?}", socket.id);
+    });
 }
 
 #[cfg(test)]
