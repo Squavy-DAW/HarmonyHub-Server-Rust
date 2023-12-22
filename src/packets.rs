@@ -8,3 +8,8 @@ pub struct ClientPreflightRequest {
 pub struct ClientPreflightResponse {
     pub ns: String
 }
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ClientData {
+    pub id: String,
+}

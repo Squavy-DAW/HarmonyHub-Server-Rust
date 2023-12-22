@@ -22,9 +22,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tracing::subscriber::set_global_default(FmtSubscriber::default())?;
 
-    let socket_store = state::State::default();
     let (socket_io_layer, io) = SocketIo::builder()
-        .with_state(socket_store)
+        .with_state(state::NamespaceStore::default())
         .build_layer();
 
     let io_clone = Arc::new(io.clone());
