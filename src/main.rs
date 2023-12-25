@@ -23,7 +23,15 @@ use crate::relay::on_connect_default;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenv::load_env();
 
-    tracing::subscriber::set_global_default(FmtSubscriber::default())?;
+    tracing::subscriber::set_global_default(FmtSubscriber::builder()
+        .with_max_level(
+            #[cfg(debug_assertions)]
+            tracing::Level::DEBUG,
+            #[cfg(not(debug_assertions))]
+            tracing::Level::INFO
+        )
+        .with_target(false)
+        .finish())?;
 
     let (socket_io_layer, io) = SocketIo::builder()
         .with_state(state::NamespaceStore::default())
