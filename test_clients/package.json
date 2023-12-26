@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "",
   "scripts": {
-    "test_broadcast_client": "node broadcast_client.js"
+    "start": "node client.js"
   },
   "author": "",
   "license": "ISC",

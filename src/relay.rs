@@ -1,11 +1,10 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 use futures::StreamExt;
-use serde_json::{Map, Value};
+use serde_json::Value;
 use socketioxide::extract::{State, Data, SocketRef, AckSender, Bin};
-use socketioxide::{SocketIo};
-use socketioxide::socket::AckResponse;
+use socketioxide::SocketIo;
 use tracing::{debug, info};
 use uuid::Uuid;
 use crate::data::ClientId;
@@ -67,29 +66,58 @@ pub async fn on_connect_dynamic(socket: SocketRef, io: Arc<SocketIo>) {
         //  if no clients left, remove namespace
     });
 
-    socket.on("sqw:broadcast", |socket: SocketRef, ack: AckSender, Bin(bin)| async move {
+    socket.on("sqw:broadcast", |socket: SocketRef, ack: AckSender, Bin(bin): Bin| async move {
         let client_id = socket.extensions.get::<ClientId>().unwrap().clone();
 
+        // todo get client id from response
         let (json, binary) : (Vec<Value>, Vec<Vec<Vec<u8>>>) = socket.broadcast()
             .timeout(Duration::from_millis(4000))
             .bin(bin)
-            .emit_with_ack::<Value>("sqw:data", ClientData { id: client_id })
-            .unwrap()
+            .emit_with_ack::<Value>("sqw:data", ClientData { id: client_id }).unwrap() // todo maybe add remaining json data
             .filter(|ack| futures::future::ready(ack.is_ok()))
             .map(|ack| {
                 let ack = ack.unwrap();
                 return (ack.data, ack.binary);
             })
-            .collect::<Vec<_>>()
-            .await
-            .iter()
-            .cloned()
+            .collect::<Vec<_>>().await
+            .iter().cloned()
             .unzip();
 
         let json = Value::Array(json);
         let binary = binary.into_iter().flatten().collect::<Vec<_>>();
         ack.bin(binary).send(json).ok();
-    })
+    });
+
+    socket.on("sqw:request", |socket: SocketRef, ack: AckSender, Bin(bin): Bin| async move {
+        let client_id = socket.extensions.get::<ClientId>().unwrap().clone();
+
+        match socket.broadcast().sockets().unwrap().get(0) {
+            Some(target) => {
+                let responses = target
+                    .timeout(Duration::from_millis(4000))
+                    .bin(bin)
+                    .emit_with_ack::<Value>("sqw:data", ClientData { id: client_id }).unwrap() // todo maybe add remaining json data
+                    .collect::<Vec<_>>().await;
+
+                let response = responses
+                    .get(0).unwrap();
+
+                match response {
+                    Ok(res) => {
+                        let json = res.data.clone();
+                        let binary = res.binary.clone();
+                        ack.bin(binary).send(json).ok();
+                    },
+                    Err(_) => {
+                        ack.send(Value::String("error".to_string())).ok();
+                    }
+                }
+            },
+            None => {
+                ack.send(Value::String("no peer available".to_string())).ok();
+            }
+        }
+    });
 }
 
 #[cfg(test)]
