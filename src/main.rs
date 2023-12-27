@@ -2,7 +2,7 @@ mod relay;
 mod dotenv;
 mod packets;
 mod state;
-mod data;
+mod internal;
 
 // use websocket::on_default_connect;
 use socketioxide::{SocketIo};
