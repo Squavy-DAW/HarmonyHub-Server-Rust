@@ -26,10 +26,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_writer(tracing_appender::rolling::hourly(
-                "./logs", "server")))
+                "./logs", "server")
+                .with_max_level(tracing::Level::DEBUG)))
         .with(tracing_subscriber::fmt::layer()
             .with_target(false)
-            .with_writer(std::io::stdout))
+            .with_writer(std::io::stdout
+                .with_max_level(tracing::Level::INFO)))
         .init();
 
     dotenv::load_env();

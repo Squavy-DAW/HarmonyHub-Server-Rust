@@ -2,10 +2,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use crate::internal::ClientId;
 
-#[derive(Debug, Deserialize)]
-pub struct ClientPreflightRequest {
-}
-
 #[derive(Debug, Serialize)]
 pub struct ClientPreflightResponse {
     pub ns: String

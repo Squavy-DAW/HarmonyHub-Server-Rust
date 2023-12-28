@@ -11,13 +11,11 @@ use crate::packets::*;
 use crate::state::NamespaceStore;
 
 pub async fn on_connect_default(socket: SocketRef, io: Arc<SocketIo>) {
-    debug!("Client connected: {:?} on ns: {:?}", socket.id, socket.ns());
+    info!("{:?} -> default namespace", socket.id);
 
     socket.on(
         "sqw:client_preflight",
-        |socket: SocketRef, Data(data): Data<ClientPreflightRequest>, ack: AckSender, namespace_store: State<NamespaceStore>| async move {
-            debug!("Client preflight: {:?}", data);
-
+        |socket: SocketRef, ack: AckSender, namespace_store: State<NamespaceStore>| async move {
             let namespaces = namespace_store.get_all().await;
             let generated = create_random_namespace(&namespaces);
             namespace_store.insert(generated.clone()).await;
@@ -27,6 +25,8 @@ pub async fn on_connect_default(socket: SocketRef, io: Arc<SocketIo>) {
                 on_connect_dynamic(socket, io_clone)
             });
 
+            info!("Created new namespace: {}", generated);
+
             ack.send(&ClientPreflightResponse { ns: generated, }).ok();
             socket.disconnect().ok();
         }
@@ -34,12 +34,12 @@ pub async fn on_connect_default(socket: SocketRef, io: Arc<SocketIo>) {
 }
 
 pub async fn on_connect_dynamic(socket: SocketRef, io: Arc<SocketIo>) {
-    info!("Client connected: {:?} on ns: {:?}", socket.id, socket.ns());
+    info!("{:?} -> {:?}", socket.id, socket.ns());
 
     socket.extensions.insert(ClientId(Uuid::new_v4().to_string()));
 
     socket.on_disconnect(|socket: SocketRef| async move {
-        info!("Client disconnected: {:?}", socket.id);
+        info!("{:?} disconnected", socket.id);
 
         // todo get all clients from namespace
         //  if no clients left, remove namespace
@@ -47,6 +47,7 @@ pub async fn on_connect_dynamic(socket: SocketRef, io: Arc<SocketIo>) {
 
     socket.on("sqw:broadcast", |socket: SocketRef, ack: AckSender, Bin(bin): Bin| async move {
         let client_id = socket.extensions.get::<ClientId>().unwrap().clone();
+        info!("{:?} broadcasting", socket.id);
 
         // todo get client id from response
         let (json, binary) : (Vec<Value>, Vec<Vec<Vec<u8>>>) = socket.broadcast()
@@ -74,6 +75,7 @@ pub async fn on_connect_dynamic(socket: SocketRef, io: Arc<SocketIo>) {
         let target = sockets.get(0);
 
         if let Some(target) = target {
+            info!("{:?} requesting to {:?}", socket.id, target.id);
             let responses = target
                 .timeout(Duration::from_millis(4000))
                 .bin(bin)
