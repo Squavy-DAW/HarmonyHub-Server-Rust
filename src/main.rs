@@ -28,8 +28,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             #[cfg(debug_assertions)]
             tracing::Level::DEBUG,
             #[cfg(not(debug_assertions))]
-            tracing::Level::INFO
-        )
+            tracing::Level::INFO)
+        .with_writer(tracing_appender::rolling::hourly(
+            "./logs", "server.log"))
         .with_target(false)
         .finish())?;
 
