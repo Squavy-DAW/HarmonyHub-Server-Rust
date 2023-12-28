@@ -1,7 +1,8 @@
 use std::env;
+use tracing::info;
 
 fn load_env_file_into_env(file_path: &str) {
-    println!("loading env '{}'", file_path);
+    info!("loading env '{}'", file_path);
     std::fs::read_to_string(file_path)
         .expect("Something went wrong reading the file")
         .lines()

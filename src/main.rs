@@ -4,35 +4,35 @@ mod packets;
 mod state;
 mod internal;
 
-// use websocket::on_default_connect;
 use socketioxide::{SocketIo};
 use std::env;
 use std::ops::Deref;
 use std::sync::Arc;
 use axum::http::HeaderValue;
-use serde_json::Value;
-use socketioxide::extract::{Bin, Data, SocketRef};
+use socketioxide::extract::{SocketRef};
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
 use tower_http::services::ServeDir;
 use tracing::info;
-use tracing_subscriber::FmtSubscriber;
+use tracing::instrument::WithSubscriber;
+use tracing_subscriber::fmt::writer::MakeWriterExt;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use crate::relay::on_connect_default;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    dotenv::load_env();
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::fmt::layer()
+            .with_ansi(false)
+            .with_writer(tracing_appender::rolling::hourly(
+                "./logs", "server")))
+        .with(tracing_subscriber::fmt::layer()
+            .with_target(false)
+            .with_writer(std::io::stdout))
+        .init();
 
-    tracing::subscriber::set_global_default(FmtSubscriber::builder()
-        .with_max_level(
-            #[cfg(debug_assertions)]
-            tracing::Level::DEBUG,
-            #[cfg(not(debug_assertions))]
-            tracing::Level::INFO)
-        .with_writer(tracing_appender::rolling::hourly(
-            "./logs", "server.log"))
-        .with_target(false)
-        .finish())?;
+    dotenv::load_env();
 
     let (socket_io_layer, io) = SocketIo::builder()
         .with_state(state::NamespaceStore::default())
