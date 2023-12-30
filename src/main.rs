@@ -31,7 +31,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with(tracing_subscriber::fmt::layer()
             .with_target(false)
             .with_writer(std::io::stdout
-                .with_max_level(tracing::Level::INFO)))
+                .with_max_level(
+                    #[cfg(debug_assertions)]
+                    tracing::Level::DEBUG,
+                    #[cfg(not(debug_assertions))]
+                    tracing::Level::INFO,
+                )))
         .init();
 
     dotenv::load_env();

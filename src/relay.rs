@@ -1,12 +1,13 @@
+use std::future;
 use std::sync::Arc;
 use std::time::Duration;
-use futures::StreamExt;
+use futures::{FutureExt, stream, StreamExt, TryFutureExt, TryStreamExt};
 use serde_json::Value;
-use socketioxide::extract::{State, Data, SocketRef, AckSender, Bin};
+use socketioxide::extract::{SocketRef, AckSender, Bin, State, Data};
 use socketioxide::SocketIo;
 use tracing::{debug, info};
 use uuid::Uuid;
-use crate::internal::{ClientId, create_random_namespace};
+use crate::internal::{AckResponseExt, ClientId, create_random_namespace};
 use crate::packets::*;
 use crate::state::NamespaceStore;
 
@@ -36,58 +37,54 @@ pub async fn on_connect_default(socket: SocketRef, io: Arc<SocketIo>) {
 pub async fn on_connect_dynamic(socket: SocketRef, io: Arc<SocketIo>) {
     info!("{:?} -> {:?}", socket.id, socket.ns());
 
-    socket.extensions.insert(ClientId(Uuid::new_v4().to_string()));
+    socket.extensions.insert(Uuid::new_v4().to_string());
 
     socket.on_disconnect(|socket: SocketRef| async move {
-        info!("{:?} disconnected", socket.id);
+        let client_id = socket.extensions.get::<ClientId>().unwrap().clone();
+        info!("{:?} ({:?}) disconnected", socket.id, client_id);
 
         // todo get all clients from namespace
-        //  if no clients left, remove namespace
+        //  if no clients, remove namespace
     });
 
-    socket.on("sqw:broadcast", |socket: SocketRef, ack: AckSender, Bin(bin): Bin| async move {
+    socket.on("sqw:broadcast", |socket: SocketRef, Data(data): Data<Value>, ack: AckSender, Bin(bin): Bin| async move {
         let client_id = socket.extensions.get::<ClientId>().unwrap().clone();
-        info!("{:?} broadcasting", socket.id);
+        info!("{:?} ({:?}) broadcasting", socket.id, client_id);
 
-        // todo get client id from response
-        let (json, binary) : (Vec<Value>, Vec<Vec<Vec<u8>>>) = socket.broadcast()
+        let ack_stream = socket.broadcast()
             .timeout(Duration::from_millis(4000))
             .bin(bin)
-            .emit_with_ack::<Value>("sqw:data", ClientData { id: client_id }).unwrap() // todo maybe add remaining json data
-            .filter(|ack| futures::future::ready(ack.is_ok()))
-            .map(|ack| {
-                let ack = ack.unwrap();
-                return (ack.data, ack.binary);
-            })
+            .emit_with_ack::<Value>("sqw:data", ClientData { id: client_id, data });
+
+        // todo handle ack.is_err()
+        let (json, binary): (Vec<Value>, Vec<Vec<Vec<u8>>>) =
+            StreamExt::map(ack_stream, |ack| { ack.unwrap().transform_response() })
             .collect::<Vec<_>>().await
             .iter().cloned()
-            .unzip();
+            .unzip();;
 
         let json = Value::Array(json);
         let binary = binary.into_iter().flatten().collect::<Vec<_>>();
         ack.bin(binary).send(json).ok();
     });
 
-    socket.on("sqw:request", |socket: SocketRef, ack: AckSender, Bin(bin): Bin| async move {
+    socket.on("sqw:request", |socket: SocketRef, Data(data): Data<Value>, ack: AckSender, Bin(bin): Bin| async move {
         let client_id = socket.extensions.get::<ClientId>().unwrap().clone();
+        info!("{:?} ({:?}) requesting", socket.id, client_id);
 
         let sockets = socket.broadcast().sockets().unwrap();
         let target = sockets.get(0);
 
         if let Some(target) = target {
-            info!("{:?} requesting to {:?}", socket.id, target.id);
             let responses = target
                 .timeout(Duration::from_millis(4000))
                 .bin(bin)
-                .emit_with_ack::<Value>("sqw:data", ClientData { id: client_id }).unwrap() // todo maybe add remaining json data
-                .collect::<Vec<_>>().await;
+                .emit_with_ack::<Value>("sqw:data", ClientData { id: client_id, data })
+                .collect::<Vec<_>>()
+                .await;
 
-            let response = responses
-                .get(0).unwrap();
-
-            if let Ok(response) = response {
-                let json = response.data.clone();
-                let binary = response.binary.clone();
+            if let Ok(response) = responses.get(0).unwrap() {
+                let (json, binary) = response.transform_response();
                 ack.bin(binary).send(json).ok();
             }
         }

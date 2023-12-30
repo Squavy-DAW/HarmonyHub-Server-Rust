@@ -284,9 +284,8 @@ dependencies = [
 
 [[package]]
 name = "engineioxide"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0abf45d291faf2620366c60a3e7e77104b1ca5eabc00dc1c897d44c4ef329b2b"
+version = "0.9.1"
+source = "git+https://github.com/Totodore/socketioxide.git?rev=e260ad1#e260ad119b20984df485bdc316857d7ce2124a55"
 dependencies = [
  "base64",
  "bytes",
@@ -296,7 +295,7 @@ dependencies = [
  "http-body-util",
  "hyper",
  "hyper-util",
- "pin-project",
+ "pin-project-lite",
  "rand",
  "serde",
  "serde_json",
@@ -1146,9 +1145,8 @@ dependencies = [
 
 [[package]]
 name = "socketioxide"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1b47fd8f139cd1d25c7b753509d11894dcd5be0a6b0a4fc260ece0bf7864d51b"
+version = "0.9.1"
+source = "git+https://github.com/Totodore/socketioxide.git?rev=e260ad1#e260ad119b20984df485bdc316857d7ce2124a55"
 dependencies = [
  "dashmap",
  "engineioxide",
@@ -1157,6 +1155,7 @@ dependencies = [
  "http-body",
  "hyper",
  "itoa",
+ "pin-project-lite",
  "serde",
  "serde_json",
  "state",

@@ -1,4 +1,4 @@
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use serde_json::Value;
 use crate::internal::ClientId;
 
@@ -10,4 +10,5 @@ pub struct ClientPreflightResponse {
 #[derive(Debug, Serialize)]
 pub struct ClientData {
     pub id: ClientId,
+    pub data: Value
 }

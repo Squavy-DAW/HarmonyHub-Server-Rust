@@ -1,8 +1,10 @@
 use std::collections::HashSet;
+use futures::StreamExt;
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
+use socketioxide::ack::AckResponse;
 
-#[derive(Deserialize, Serialize, Debug, Clone)]
-pub struct ClientId(pub String);
+pub type ClientId = String;
 
 pub fn create_random_namespace(namespaces: &HashSet<String>) -> String {
     const CHARSET: &str = "ABCDEFGHIJKLMNOPQRSTUVWXYZ\
@@ -22,6 +24,20 @@ pub fn create_random_namespace(namespaces: &HashSet<String>) -> String {
     }
 
     return s;
+}
+
+pub trait AckResponseExt {
+    fn transform_response(&self) -> (Value, Vec<Vec<u8>>);
+}
+
+impl AckResponseExt for AckResponse<Value> {
+    fn transform_response(&self) -> (Value, Vec<Vec<u8>>) {
+        let target_id = self.socket.extensions.get::<ClientId>().unwrap().clone();
+        let mut data = Map::new();
+        data.insert("id".to_string(), Value::String(target_id));
+        data.insert("data".to_string(), self.data.clone());
+        (data.into(), self.binary.clone())
+    }
 }
 
 #[cfg(test)]
