@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
-use futures::StreamExt;
-use serde_json::Value;
+use futures::stream::{StreamExt};
+use serde_json::{Map, Number, Value};
 use socketioxide::extract::{SocketRef, AckSender, Bin, State, Data};
 use socketioxide::SocketIo;
-use tracing::info;
+use tracing::{debug, info};
 use uuid::Uuid;
 use crate::internal::{AckResponseExt, ClientId, create_random_namespace};
 use crate::packets::*;
@@ -21,7 +21,7 @@ pub async fn on_connect_default(socket: SocketRef, io: Arc<SocketIo>) {
     /// The server creates the namespace by calling `io.ns(...)`.
     /// Simultaneously, the namespace is also added to a list of active namespaces.
     /// _Keep this list as long as we don't have access to socketioxide's own internal Hashmap router._
-    socket.on("sqw:client_preflight", |socket: SocketRef, ack: AckSender, namespace_store: State<NamespaceStore>| async move {
+    socket.on("sqw:client-preflight", |socket: SocketRef, ack: AckSender, namespace_store: State<NamespaceStore>| async move {
         let namespaces = namespace_store.get_all().await;
         let generated = create_random_namespace(&namespaces);
         namespace_store.insert(generated.clone()).await;
@@ -46,11 +46,15 @@ pub async fn on_connect_dynamic(socket: SocketRef, io: Arc<SocketIo>) {
 
     socket.extensions.insert(Uuid::new_v4().to_string());
 
+    // todo: remove
+    debug!("Connected sockets: {:?}", socket.broadcast().sockets().unwrap().iter().map(|socket| socket.id.to_string()).collect::<Vec<_>>());
+
     /// Called, when a client intentionally disconnects or looses connection.
     /// Todo: Checks if all clients of that namespace are disconnected and free the session again.
     socket.on_disconnect(|socket: SocketRef| async move {
         let client_id = socket.extensions.get::<ClientId>().unwrap().clone();
         info!("{:?} ({:?}) disconnected", socket.id, client_id);
+        socket.broadcast().emit("sqw:user-disconnected", ClientDisconnected { id: client_id }).ok();
     });
 
     /// One client broadcasts an event to all other clients in this namespace.
@@ -83,8 +87,8 @@ pub async fn on_connect_dynamic(socket: SocketRef, io: Arc<SocketIo>) {
     ///
     /// {
     ///     id: <socket-id>
-    ///     json: {some_other_data:"cool!"}                             // raw JSON
-    ///     binary: [ArrayBuffer[5,32,36,4,8], ArrayBuffer[2,5,4]]      // list of binary data
+    ///     json: {some_other_data:"cool!"}                 // raw JSON
+    ///     binary: [ArrayBuffer[5,8], ArrayBuffer[2,5,4]]  // list of binary data
     /// }
     /// ```
     ///
@@ -94,16 +98,25 @@ pub async fn on_connect_dynamic(socket: SocketRef, io: Arc<SocketIo>) {
     /// NEED to send back exactly the same count of arraybuffers in order to distinguish between them.
     /// The data looks something like this where the response comes from two clients:
     /// ```js
-    /// [{
-    ///     id: <client-1-id>
-    ///     data: { some_other_data: "cool!" }
-    /// }, {
-    ///     id: <client-2-id>
-    ///     data: "very nice"
-    /// }, [ArrayBuffer[5,32,36,4,8],               // this belongs to client 1
-    ///     ArrayBuffer[2,5,4],                     // -,,-
-    ///     ArrayBuffer[48,13,49,4,18],             // this belongs to client 2
-    ///     ArrayBuffer[39,1,3,23,10,29,3]]]        // -,,-
+    /// {
+    ///     len: 2,                              // response count
+    ///     data: [{
+    ///         id: <client-1-id>,
+    ///         len: 2,
+    ///         data: { some_other_data: "cool!" }
+    ///     }, {
+    ///         id: <client-2-id>,
+    ///         len: 3,
+    ///         data: "very nice"
+    ///     }, [
+    ///         ArrayBuffer[5,32,36,4,8],             // this belongs to client 1
+    ///         ArrayBuffer[2,5,4]                    // -,,-
+    ///     ], [
+    ///         ArrayBuffer[48,13,49,4,18],           // this belongs to client 2
+    ///         ArrayBuffer[39,1,3,23,10,29,3]        // -,,-
+    ///         ArrayBuffer[3,21,7]        // -,,-
+    ///     ]],
+    /// }
     /// ```
     socket.on("sqw:broadcast", |socket: SocketRef, Data(data): Data<Value>, ack: AckSender, Bin(bin): Bin| async move {
         let client_id = socket.extensions.get::<ClientId>().unwrap().clone();
@@ -114,16 +127,19 @@ pub async fn on_connect_dynamic(socket: SocketRef, io: Arc<SocketIo>) {
             .bin(bin)
             .emit_with_ack::<Value>("sqw:data", ClientData { id: client_id, data });
 
-        // todo handle ack.is_err()
         let (json, binary): (Vec<Value>, Vec<Vec<Vec<u8>>>) =
-            StreamExt::map(ack_stream, |ack| { ack.unwrap().transform_response() })
+            ack_stream.filter_map(|ack| async {
+                if let Ok(ack) = ack { Some(ack.transform_response()) } else { None }
+            })
             .collect::<Vec<_>>().await
             .iter().cloned()
             .unzip();
 
-        let json = Value::Array(json);
+        let mut data = Map::new();
+        data.insert("len".to_string(), Value::Number(Number::from(json.len())));
+        data.insert("data".to_string(), Value::Array(json));
         let binary = binary.into_iter().flatten().collect::<Vec<_>>();
-        ack.bin(binary).send(json).ok();
+        ack.bin(binary).send(data).ok();
     });
 
     /// One client requests data from another client. This target is in this case currently the first client

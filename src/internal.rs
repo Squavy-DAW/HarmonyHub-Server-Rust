@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
+use serde_json::{Map, Number, Value};
 use socketioxide::ack::AckResponse;
 
 pub type ClientId = String;
@@ -35,6 +35,7 @@ impl AckResponseExt for AckResponse<Value> {
         let target_id = self.socket.extensions.get::<ClientId>().unwrap().clone();
         let mut data = Map::new();
         data.insert("id".to_string(), Value::String(target_id));
+        data.insert("len".to_string(), Value::Number(Number::from(self.binary.len())));
         data.insert("data".to_string(), self.data.clone());
         (data.into(), self.binary.clone())
     }

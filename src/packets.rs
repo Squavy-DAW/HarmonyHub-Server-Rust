@@ -12,3 +12,8 @@ pub struct ClientData {
     pub id: ClientId,
     pub data: Value
 }
+
+#[derive(Debug, Serialize)]
+pub struct ClientDisconnected {
+    pub id: ClientId
+}

@@ -9,6 +9,7 @@ use std::env;
 use std::ops::Deref;
 use std::sync::Arc;
 use axum::http::HeaderValue;
+use axum::routing::get;
 use socketioxide::extract::{SocketRef};
 use tower::ServiceBuilder;
 use tower_http::cors::CorsLayer;
@@ -51,7 +52,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let app = axum::Router::new()
-        .nest_service("/", ServeDir::new("dashboard"))
+        .route("/status", get(|| async { "ok" }))
+        .nest_service("/", ServiceBuilder::new()
+            .layer(CorsLayer::new()
+                .allow_origin(env::var("CLIENT_ORIGIN").expect("CLIENT_ORIGIN must be set")
+                    .parse::<HeaderValue>()
+                    .unwrap()))
+            .service(ServeDir::new("dashboard")))
         .layer(ServiceBuilder::new()
             .layer(CorsLayer::new()
                 .allow_origin(env::var("CLIENT_ORIGIN").expect("CLIENT_ORIGIN must be set")
